@@ -1,0 +1,657 @@
+---
+title: "Etablissements de santé"
+author: "Margaux Bailleul, Clémence Chesnais, Oriane Duclos & Marie Guibert"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+    
+    
+---
+<center>
+![](https://site.entractes.fr/wp-content/uploads/2019/07/illustration-marion-jolly-etablissement-entractes.png)
+</center>
+
+<style>
+body {
+text-align: justify}
+</style>
+
+Le but du projet est d’étudier et de décrire un ensemble de données en appliquant des outils rencontrés en TD. 
+
+Source :   *Statistique annuelle des établissements de santé* (SAE)
+
+# Acronymes 
+- ETP : Equivalent Temps Plein
+- EXT : Hospitalisation dans une autre entité juridique
+- HAD : Hospitalisation A Domicile
+- LS : Hospitalisation en SSR, PSY, USLD
+- MCO : Médecine Cardio-Obstétrique
+- RMM : Revue de Mortalité et de Morbidité
+
+# Environnement de travail
+
+```{r message=FALSE,warning=FALSE}
+library(ggplot2) #pour des graphiques esthétiques
+library(tidyverse)
+library(scales)
+library(RColorBrewer)
+library(FactoMineR) #pour l'Analyse en Composantes Principales
+library(fmsb)
+library(data.table)
+library(hrbrthemes) #pour des graphiques esthétiques
+```
+
+# Partie 1 : Prise en main de données 
+
+## 1.1 Cancero
+
+#### Question 1
+
+##### Importation de données
+```{r}
+cancero2019 <- read.csv("CANCERO_2019.csv",sep=";")
+```
+
+```{r eval=FALSE}
+head(cancero2019,3)
+summary(cancero2019)
+str(cancero2019)
+```
+
+```{r}
+patients_MCO = sum(cancero2019$CANCERO_A11,na.rm = TRUE)
+cat("Patients en MCO : ",patients_MCO)
+```
+On compte **356 899** patients adultes atteints de cancer ayant eu un traitement par chimiothérapie dans l’année en MCO 
+
+#### Question 2
+```{r}
+patients_HAD = sum(cancero2019$CANCERO_B11,na.rm = TRUE)
+cat("Patients en HAD : ",patients_HAD)
+
+patients_HAD_MCO = patients_HAD + patients_MCO
+cat("Patients en HAD et MCO : ",patients_HAD_MCO)
+
+hosp_HAD = (patients_HAD/patients_HAD_MCO)*100
+cat("Proportion de patients en HAD : ",hosp_HAD)
+```
+La proportion d'adultes atteints de cancer ayant eu un traitement par chimiothérapie, en hospitalisation à domicile, est de **1.24%**.
+
+
+```{r}
+enfants_MCO = sum(cancero2019$CANCERO_C11,na.rm = TRUE)
+cat("Enfants en MCO : ",enfants_MCO)
+
+enfants_HAD = sum(cancero2019$CANCERO_D11,na.rm = TRUE)
+cat("Enfants en HAD : ",enfants_HAD)
+
+enfants_HAD_MCO = enfants_HAD + enfants_MCO
+cat("Enfants en HAD et MCO : ",enfants_HAD_MCO)
+
+hosp_HAD_enfants = (enfants_HAD/enfants_HAD_MCO)*100
+cat("Proportion d'enfants en HAD : ",hosp_HAD_enfants)
+```
+La proportion d'enfants ayant eu un traitement par chimiothérapie, en hospitalisation à domicile, est de **4.93%**
+
+```{r}
+cat("Différence entre les hospitalisations adultes & enfants : ",hosp_HAD_enfants - hosp_HAD)
+```
+On remarque une différence de **3.69** points de pourcentage entre les hospitalisations des adultes et des enfants à domicile ayant une chimiothérapie.
+Finalement, la proportion d'enfants ayant eu un traitement par chimiothérapie en hospitalisation à domicile est ***plus importante*** que celle des adultes.
+
+#### Question 3
+
+- Oncologue : Médecin spécialiste du cancer et de ses traitements, appelé aussi cancérologue
+
+<u>Création de la variable Patients</u> :
+```{r}
+cancero2019$patients <- cancero2019$CANCERO_B11+cancero2019$CANCERO_C11+cancero2019$CANCERO_D11+cancero2019$CANCERO_A11
+```
+
+```{r warning=FALSE, fig.align="center"}
+ggplot(cancero2019,aes(x = patients, y=CANCERO_C28))+
+geom_point(color = 'orange', fill = "#69b3a2", shape =21, alpha = 0.5, size = 3)+
+ggtitle("Nombre de médecins oncologues médicaux en fonction du nombre de Patients")+
+labs(x="Nombre de patients",y="Nombre d'oncologues")+
+theme(plot.title = element_text(hjust = 0.5))
+```
+
+Sur ce graphique, globalement, on constate peu d'oncologues au sein des établissements de santé.
+
+```{r}
+mean(cancero2019$CANCERO_C28, na.rm=TRUE)
+```
+
+En moyenne, sur tous les hopitaux on compte **3.63 oncologues**. Cela est très faible pour un nombre très important de patients.
+
+<u>Zoom sur les hôpitaux ayant moins de 2000 patients</u> :
+
+```{r warning=FALSE,fig.align="center"}
+ggplot(cancero2019,aes(x = patients, y=CANCERO_C28))+
+geom_point(color = 'orange', fill = "#69b3a2", shape =21, alpha = 0.5, size = 3)+
+ggtitle("Nombre de médecins oncologues médicaux en fonction du nombre de Patients")+
+labs(x="Nombre de patients",y="Nombre d'oncologues",subtitle="Hôpitaux ayant moins de 2000 patients")+
+theme(plot.title = element_text(hjust = 0.5),plot.subtitle = element_text(hjust = 0.5))+
+scale_x_continuous(name="Patients", limits=c(0, 2000))
+```
+
+Ce deuxième graphique nous permet d'observer les effectifs des médecins oncologues au sein des hopitaux ayant moins de 2000 patients. 
+
+## 1.2 Urgences
+
+#### Question 1
+
+##### Importation de données
+
+```{r}
+urgences2019 = read.csv("URGENCES2_2019.csv",sep=";")
+```
+
+```{r eval=FALSE}
+head(urgences2019,3)
+summary(urgences2019)
+str(urgences2019)
+```
+
+Nombre total de passages aux urgences en 2019 pour des patients de plus de 80 ans et de moins de 18 ans :
+```{r}
+patients_80 = sum(urgences2019$dt80[urgences2019$URG=="GEN"],na.rm=TRUE)
+cat("Nombre de passages de patients de plus de 80 ans : ", patients_80)
+patients_18 = sum(urgences2019$dt18[urgences2019$URG=="GEN"],na.rm=TRUE)
+cat("\nNombre de passages de patients de moins de 18 ans : ", patients_18)
+```
+
+```{r}
+cat("Y-a-t'il plus de passages patients de plus de 80 ans que de moins de 18 ans ?",patients_80>patients_18)
+```
+On compte plus de passages aux urgences dans la même année pour des patients de moins de 18 ans. En effet, on compte **2 007 238** passages aux urgences dans la même année pour des patients de plus de 80 ans contre **3 406 550** passages aux urgences pour des patients de moins de 18 ans.
+
+
+```{r}
+#voir acronymes
+prop_HAD_18 <- (sum(urgences2019$dtHAD18,na.rm = TRUE)/patients_18)*100
+prop_MCO_18 <- (sum(urgences2019$dtMCO18,na.rm = TRUE)/patients_18)*100
+prop_LS_18 <- (sum(urgences2019$dtLS18,na.rm = TRUE)/patients_18)*100
+prop_EXT_18 <- (sum(urgences2019$dtEXT18,na.rm = TRUE)/patients_18)*100
+
+```
+
+```{r}
+max(prop_HAD_18,prop_MCO_18,prop_LS_18,prop_EXT_18) 
+```
+
+Parmi les unités d'urgence générale, la proportion de patients de moins de 18 ans la plus élevée correspond à l'unité MCO. En effet, celle-ci correspond à **7,5%** des patients de moins de 18 ans. Les autres unités présentent des proportions très faibles.
+
+#### Question 2
+
+##### Importation de données
+```{r}
+urgences2020 = read.csv("URGENCES2_2020.csv",sep=";")
+```
+
+```{r eval=FALSE}
+head(urgences2020)
+```
+
+<u>Création d'un nouveau dataframe joignant l'année 2019 et 2020 :</u>
+```{r}
+urgences2019_2020 = merge(urgences2019,urgences2020,by.x = c("FI","FI_EJ","URG"), by.y =c("FI","FI_EJ","URG"), suffixes = c(".2019",".2020"))
+```
+
+```{r}
+sum(urgences2019_2020$LIT_UHCD.2019<urgences2019_2020$LIT_UHCD.2020,na.rm = TRUE)
+```
+Entre 2019 et 2020, on a rajouté des lits dans **45** unités générales.
+
+#### Question 3
+
+On étudie l'évolution de la moyenne annuelle du nombre total de passages aux urgences dans les unités générales entre 2017 et 2021
+
+##### Importation des données 
+```{r}
+urgences2017 = read.csv("URGENCES2_2017.csv",sep=";")
+urgences2018 = read.csv("URGENCES2_2018.csv",sep=";")
+urgences2021 = read.csv("URGENCES2_2021.csv",sep=";")
+```
+
+<u>Calcul de la moyenne annuelle du nombre de passages sur les quatre années :</u>
+```{r}
+moyenne_annuelle = c(mean(urgences2017$PASSU,na.rm = TRUE),mean(urgences2018$PASSU,na.rm = TRUE),mean(urgences2019$PASSU,na.rm = TRUE),mean(urgences2020$PASSU,na.rm = TRUE),mean(urgences2021$PASSU,na.rm = TRUE))
+annee = c(2017,2018,2019,2020,2021)
+
+df_urg = data.frame(annee,moyenne_annuelle)
+```
+
+```{r, fig.align="center"}
+ggplot(data=df_urg, aes(x = annee,y=moyenne_annuelle))+
+  geom_point(shape = 21, colour = "darkgreen", fill = "white", size = 5, stroke = 5)+
+  ggtitle("Evolution de la moyenne annuelle du nombre total de passages aux urgences \n dans les unités générales entre 2017 et 2021")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  ylab("Moyenne")+
+  xlab("Années")
+```
+
+Le nombre de séjours en hospitalisation complète et partielle a fortement diminué en 2020, comme le montre ce graphique. Ce recul « inédit » s'explique notamment par les déprogrammations de soins non urgents lors de la crise sanitaire.
+
+# 1.3 Q20
+
+#### Question 1
+
+##### Importation des données 
+```{r}
+q20 = read.csv("Q20_2019.csv",sep=";", header = TRUE)
+```
+
+```{r eval=FALSE}
+head(q20)
+summary(q20)
+```
+
+<u>Transformation de la variable PERSO en facteur</u>
+```{r}
+q20$PERSO = as.factor(q20$PERSO)
+```
+
+```{r}
+knitr::kable(sapply(q20,function(x) round((sum(is.na(x))/nrow(q20))*100)),col.names="Données manquantes")
+```
+
+Dans le fichier Q20, on observe beaucoup de données manquantes. En effet, les variables ETP des hospitaliers universitaires titulaire (ETP_PU) et effectifs des libéraux (EFFLIBPLF) présentent 83 et 81% de données manquantes.
+
+#### Question 2 
+
+<u>Proportion d'hommes salariés temps plein pour chaque spécialité :</u>
+```{r}
+tab = aggregate(q20$EFFSALPLH,list(q20$PERSO),sum,na.rm=TRUE)
+colnames(tab) <- c("Spécialité", "Effectif Hommes salariés temps plein")
+knitr::kable(head(tab, 10))
+
+```
+
+<u>Calcul de l'effectif total des hommes à temps plein :</u>
+
+```{r}
+effectif_total_H_temps_plein = sum(q20$EFFSALPLH[q20$PERSO=="M9999"],na.rm = TRUE)
+prop_H = tab$`Effectif Hommes salariés temps plein`/effectif_total_H_temps_plein 
+# On enlève la dernière proportion correspondant à PERSO=M9999 (total effectif hommes)
+prop_H = prop_H[1:length(prop_H)-1] 
+
+```
+
+<u>Spécialité dont la proportion d'hommes salariés temps plein est la plus grande :</u>
+
+```{r}
+cat("Proportion la plus importante :",max(prop_H))
+```
+Parmis les proportions d'hommes salariés temps plein, la proportion la plus grande est de **0.116 (soit 11.6%)**. On va maintenant retrouver la spécialité correspondant à cette proportion.
+
+```{r}
+spec_prop_max <- tab$`Spécialité`[(tab$`Effectif Hommes salariés temps plein`/effectif_total_H_temps_plein)==max(prop_H)]
+spec_prop_max
+```
+La spécialité correspondant à la plus grande proportion est la spécialité **M1010**. Grâce au fichier "Desc_Perso.csv", on va pouvoir obtenir le nom exacte de cette spécialité.
+
+<u>Ouverture du fichier "Desc_Perso.csv":</u>
+
+```{r}
+perso <- read.csv("Desc_Perso.csv", stringsAsFactors=TRUE)
+colnames(perso) <- c("Valeur.Modalité","Label.Modalité")
+```
+
+```{r}
+specialite_max <- perso$`Label.Modalité`[perso$`Valeur.Modalité`==spec_prop_max]
+specialite_max
+```
+
+La **médecine générale** est la spécialité dont la proportion d'hommes salariés temps plein est la plus grande, représentant **11.6%** de l'effectif total.
+
+<u>Spécialité dont la proportion d'hommes salariés temps plein est la plus petite :</u>
+```{r}
+cat("Proportion la plus faible :",min(prop_H))
+```
+
+```{r}
+spec_prop_min <- tab$`Spécialité`[(tab$`Effectif Hommes salariés temps plein`/effectif_total_H_temps_plein)==min(prop_H)]
+spec_prop_min
+specialite_min <- perso$`Label.Modalité`[perso$`Valeur.Modalité`==spec_prop_min]
+specialite_min
+```
+Les **autres spécialités chirurgicales** soit M2110 sont la spécialité dont la proportion d'hommes salariés temps plein est la plus faible avec une valeur de **0.1616%**
+
+<u> Spécialité dont la proportion d'hommes salariés temps plein est la plus proche de 1/2 :</u>
+```{r}
+cat("Proportion la plus proche de 1/2 :",min(1/2-prop_H))
+```
+
+```{r}
+spec_prop_demi = tab$`Spécialité`[(1/2-(tab$`Effectif Hommes salariés temps plein`/effectif_total_H_temps_plein))==min(1/2-prop_H)]
+perso$`Label.Modalité`[perso$`Valeur.Modalité`==spec_prop_demi]
+```
+La **médecine générale** (hors DES urgentistes, hors gériatrie) est la spécialité dont la proportion d'hommes salariés temps plein est la plus proche de 1/2. On a donc **38.4%** d'hommes pratiquant la spécialité de médecine générale.
+
+#### Question 3
+
+<u>Ordonner les spécialités en fonction du nombre total d'ETP :</u>
+
+```{r}
+specialite_ETP <- aggregate(x = q20$ETP_PU, by = list(q20$PERSO),FUN = sum, na.rm = TRUE)
+colnames(specialite_ETP)<- c("Specialites","ETP")
+specialite_ETP <- specialite_ETP[1:length(specialite_ETP$ETP)-1,]
+tri_specialite_ETP <- specialite_ETP[order(specialite_ETP$ETP, decreasing = T),]
+```
+
+<u> Affichage des 10 premières :</u> 
+```{r}
+dix_premieres <- head(tri_specialite_ETP, 10)
+colnames(dix_premieres) <- c("Specialites","ETP")
+knitr::kable(dix_premieres)
+```
+
+<u> Diagramme en barre des 5 premières spécialités en fonction du nombre total d'ETP :</u>
+
+```{r}
+top_cinq <- head(tri_specialite_ETP, 5)
+colnames(top_cinq) <- c("Specialites","ETP")
+knitr::kable(top_cinq)
+top_cinq$Specialites
+top_cinq$ETP
+```
+```{r,fig.align="center"}
+ggplot(data = top_cinq, aes(x = Specialites, y = ETP, fill=Specialites))+
+  geom_bar(stat = "identity")+
+  scale_fill_brewer(palette="Blues")+
+  ggtitle("Diagramme en barre des 5 premières spécialités \nen fonction du nombre total d'ETP")+
+  xlab("Spécialités")+ylab("Effectif total ETP")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Sur ce graphique, on observe que la spécialité M3011 correspondant à la spécialité **Médecins spécialisés en biologie médicale** a l'effectif équivalent temps plein des hospitaliers universitaires titulaires le plus important, avec plus de 400 ETP.
+
+
+# Partie 2 : Description et analyse des données
+
+## 1.1 Cancero
+
+#### Précisions
+
+- CANCERO_A1 : chimiothérapie
+- CANCERO_A2 : radiothérapie
+- CANCERO_A3 : unité spécialisée dans le traitement des cancers
+
+#### On étudie le nombre d'établissements traitant en chimiothérapie ou en radiothérapie.
+
+<u>Transformation des variables CANCERO_A1 et A2 en variables indicatrices : </u>
+```{r}
+cancero2019$CANCERO_A1 <- factor(cancero2019$CANCERO_A1, labels= c("Traitant", "Non-traitant"))
+cancero2019$CANCERO_A2 <- factor(cancero2019$CANCERO_A2, labels= c("Traitant", "Non-traitant"))
+```
+
+<u>Création d'un nouveau dataframe pour faciliter la manipulation de données (facultatif) :</u>
+```{r}
+chimio_radio <- data.frame(cancero2019$CANCERO_A1,cancero2019$CANCERO_A2)
+colnames(chimio_radio) <- c("Chimio","Radio")
+knitr::kable(summary(chimio_radio))
+```
+
+<u>Représentation graphique : </u>
+```{r, fig.align="center"}
+couleurs <- brewer.pal(5, "Set2") 
+par(mfrow=c(1,2))
+pie(table(chimio_radio$Chimio), labels = c("Traitant","Non-traitant"), border="white", col=couleurs,main="Etablissements traitant \nen chimio-thérapie")
+pie(table(chimio_radio$Radio), labels = c("Traitant","Non-traitant"), border="white", col=couleurs,main="Etablissements traitant \nen radio-thérapie")
+```
+
+
+#### Etude du nombre d'établissements ayant des unités spécialisées pour le traitement des cancers 
+
+<u> Transformation des variables CANCERO_A3 en variables indicatrices :</u>
+```{r}
+cancero2019$CANCERO_A3 <- factor(cancero2019$CANCERO_A3, labels= c("Oui", "Non"))
+```
+
+```{r,fig.align="center"}
+cancero2019 %>%
+  filter(!is.na(CANCERO_A3)) %>%  #supression des valeurs manquantes grâce au filtre (package tidyverse)
+  ggplot(aes(CANCERO_A3)) + 
+  geom_bar(color="blue", fill=rgb(0.1,0.4,0.5,0.7))+
+  labs(colour = "Cylinders",x="Existence d'unités spécialisés",y="Effectif",title="Etablissements avec des unités spécialisées dans traitement des cancers")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+tab <- data.table(table(cancero2019$CANCERO_A3))
+colnames(tab)<-c("Etablissements avec unités spécialisées pour les cancers","Effectif")
+knitr::kable(tab)
+```
+
+#### Comparaison du nombre de séances réalisées en hospitalisation complète par radiothérapie ou par curiethérapie
+
+Rappelons qu'en radiothérapie, les rayons sont émis en faisceau par une machine située à proximité du patient. Ils traversent la peau pour atteindre la tumeur. Alors que dans la curiethérapie, des sources radioactives sont implantées directement à l'intérieur du corps de la personne malade. Ici, dans les graphiques, on observe qu'il y a plus de traitement par radiothérapie que de traitement par curiethérapie. C'est logique car La curiethérapie est une technique particulière de radiothérapie. De plus, La curiethérapie peut être utilisée pour traiter un cancer du sein après une chirurgie conservatrice, lorsqu'une dose additionnelle dans la zone opérée. Celle-ci est utilisé sur plus petite proportion de patients.
+
+```{r warning=FALSE, fig.align="center"}
+ggplot(data=cancero2019) +
+  geom_point(aes(x = patients, y = CANCERO_B15),color="steelblue") +
+  geom_point(aes(x = patients, y = CANCERO_B16), color = "darkred") +
+  scale_x_continuous(name="Patients", limits=c(0, 2000))+
+  scale_y_continuous(name="Nombre de séances en hospitalisation complète",limits=c(0, 2100))+
+  labs(title = "Nombre de séances pour les patients étant traités par radiothérapie \nou curiethérapie")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(data=cancero2019) +
+  geom_point(aes(x = patients, y = CANCERO_A15),color="steelblue") +
+  geom_point(aes(x = patients, y = CANCERO_A16), color = "darkred") +
+  scale_x_continuous(name="Patients", limits=c(0, 2000))+
+  scale_y_continuous(name="Nombre de séances en hospitalisation ambulatoire")+
+  labs(title = "Nombre de séances pour les patients étant traités par radiothérapie \nou curiethérapie")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Ces graphiques nous présentent le nombre de séances pour les patients étant traités par radiothérapie ou curiethérapie. Les points en bleus correspondent à la radiothérapie et les bordeaux à curiethérapie. Nous observons de nombreuses valeurs égales à zéro puisque les patients suivant des séances de radiothérapie ne suivent pas en même temps des séances de curiethérapie. \n
+Le premier graphique concerne les hospilatisations complètes. En moyenne, celui-ci comptabilise un plus grand nombre de séance de traitement. \n 
+Sur le deuxième graphique, la radiothérapie est largement majoritaire. Peu de séances de radiothérapies sont effectuées en ambulatoire.  
+En moyenne, le nombre de séances effectuées en hospitalisation compléte est inférieur à celui en hospitalisation ambulatoire. 
+
+#### Spécialité des médecins de l'unité radiothéraphie
+
+```{r}
+med_spe_tempsplein = data.frame(cancero2019$CANCERO_A19,cancero2019$CANCERO_A20, cancero2019$CANCERO_A21,cancero2019$CANCERO_A22, cancero2019$CANCERO_A23)
+
+colnames(med_spe_tempsplein) <-c("Médecins radiothérapeutes","Radiophysiciens","Manipulateurs d'électroradiologie","Dosimétristes","Autre personnel non médical de l'unité de radiothérapie")
+```
+
+```{r,fig.align="center"}
+boxplot(med_spe_tempsplein, xlab = "Spécialité des médecins de l'unité radiothéraphie", ylab="Effectifs temps plein", main = "Boxplot de l'effectif temps plein en fonction \nde la spécialité de l'unité de radiothérapie", col=c("#8566a5","#9697c1","#c196c1","#b8a6ca","#d1c6dd"), border= "#2c2137")
+```
+
+<u>Petit rappel sur les spécialistes en radiologie :</u>
+
+- Manipulateur en électroradiologie : spécialiste des scanners, des radios et des échographies.
+- Médecins radiothérapeutes : expert de la radiothérapie.
+- Radiophysicien en radiothérapie :  il applique les procédures de suivi technique des appareils utilisant les radiations ionisantes, que ce soit en imagerie médicale, ou en radiothérapie. 
+- Dosimétristes :  personne qui participe au calcul de la dose de rayons nécessaire à une radiothérapie et à la planification du traitement.
+- Autre personnel non médical de l'unité de radiothérapie : assistant
+
+Ces graphiques nous permettent d'analyser l'effectif temps plein en fonction de la spécialité des médecins en radiologie, s'occupant des personnes ayant un cancer. L'effectif des manipulateurs d'électroradiologie est largement supérieur à celui des dosimétristes ou des radiophysiciens.
+
+
+#### Etude des équipe des services médicaux autour de patients ayant un cancer 
+
+<u>Présentation d'une équipe type avec 18 personnes :</u>
+
+```{r}
+effectif_para = c(round(mean(cancero2019$CANCERO_B30, na.rm=TRUE)),round(mean(cancero2019$CANCERO_B31,na.rm=TRUE)),round(mean(cancero2019$CANCERO_B32, na.rm=TRUE)),round(mean(cancero2019$CANCERO_B33, na.rm=TRUE)),round(mean(cancero2019$CANCERO_B34, na.rm=TRUE)))
+cat("Effectif moyen :",sum(effectif_para))
+```
+
+En moyenne, une équipe est composée de 18 personnes.
+
+```{r}
+equipe_para_type = t(data.frame(rep(18,5),rep(0,5),effectif_para))
+
+colnames(equipe_para_type) = c("Infirmiers","Aides-soignants","Psychologues","Assistant(e)s de service social","Autres personnels des services médicaux")
+
+rownames(equipe_para_type) = c("Maximum", "Minimum", "Effectif")
+
+equipe_para_type <-as.data.frame(equipe_para_type)
+knitr::kable(equipe_para_type)
+```
+
+
+<u> Représentation en araignée d'une équipe : </u>
+```{r, fig.align="center"}
+radarchart(equipe_para_type, cglty = 1, cglcol = "gray",cglwd = 1,pcol = 4,plwd = 2,plty = 1, pfcol = rgb(0, 0.4, 1, 0.25),title="Représentation d'une équipe type")
+```
+
+## 1.2 Urgences
+
+#### On étudie l'évolution de la moyenne annuelle du nombre de séjour en unité d'hospitalisation de courte durée.
+
+```{r, fig.align="center"}
+moy_sejour_hosp = c(mean(urgences2017$SEJ_UHCD,na.rm = TRUE),mean(urgences2018$SEJ_UHCD,na.rm = TRUE),mean(urgences2019$SEJ_UHCD,na.rm = TRUE),mean(urgences2020$SEJ_UHCD,na.rm = TRUE),mean(urgences2021$SEJ_UHCD,na.rm = TRUE))
+
+df_sejour <- data.frame(annee,moy_sejour_hosp)
+ggplot(data=df_sejour, aes(x = annee,y=moy_sejour_hosp))+
+  geom_point(color="darkblue",fill="#add8e6",shape=21,alpha=0.5,size=6,stroke = 2)+
+  ggtitle("Evolution de la moyenne annuelle du nombre total de séjours en unité \n d'hospitalisation de courte durée entre 2017 et 2021")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  ylab("Moyenne")+
+  xlab("Année")
+```
+
+Le pic du nombre de séjours en unité d'hospitalisation de courte durée est atteint en 2021. Cela est tout à fait correct puisque la crise du Covid-19 a fait augmenter considérablement le nombre d'hospitalisations.
+
+
+#### On étudie maintenant le lien entre la durée du séjour et l'unité d'urgence (générale et pédiatrique)
+
+```{r}
+moy_duree_sejour = c(mean(urgences2017$SEJ_UHCD[urgences2021$URG=="GEN"],na.rm = TRUE),mean(urgences2017$SEJ_UHCD[urgences2021$URG=="PED"],na.rm = TRUE),mean(urgences2018$SEJ_UHCD[urgences2021$URG=="GEN"],na.rm = TRUE),mean(urgences2018$SEJ_UHCD[urgences2021$URG=="PED"],na.rm = TRUE),mean(urgences2019$SEJ_UHCD[urgences2021$URG=="GEN"],na.rm = TRUE),mean(urgences2019$SEJ_UHCD[urgences2021$URG=="PED"],na.rm = TRUE),
+mean(urgences2020$SEJ_UHCD[urgences2021$URG=="GEN"],na.rm = TRUE),mean(urgences2020$SEJ_UHCD[urgences2021$URG=="PED"],na.rm = TRUE),
+mean(urgences2021$SEJ_UHCD[urgences2021$URG=="GEN"],na.rm = TRUE),mean(urgences2021$SEJ_UHCD[urgences2021$URG=="PED"],na.rm = TRUE))
+
+annee = c(rep("2017",2),rep("2018",2),rep("2019",2),rep("2020",2),rep("2021",2))
+type_urgence = c("GEN","PED","GEN","PED","GEN","PED","GEN","PED","GEN","PED")
+```
+
+<u>Transformation de la variable type_urgence en facteur :</u>
+
+```{r}
+df_sejour_evol <- data.frame(annee,moy_duree_sejour,type_urgence)
+df_sejour_evol$type_urgence = as.factor(df_sejour_evol$type_urgence)
+```
+
+<u>Représentation de l'évolution de la moyenne annuelle du nombre de séjours en unité d'hospitalisation de courte durée :</u>
+
+```{r, fig.align="center"}
+ggplot(data= df_sejour_evol)+
+  geom_point(aes(x=annee,y=moy_duree_sejour,color=type_urgence),size = 10)+
+  ggtitle("Evolution de la moyenne annuelle du nombre de séjours en unité \n d'hospitalisation de courte durée, en pédiatrie et générale entre 2017 et 2021")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  labs(color="Type d'urgence",x="Années", y="Moyenne")
+```
+
+On constate qu'en 2020 et 2021, le nombre de séjours en unité d'hospitalisation de courte durée en pédiatrie est **beaucoup plus bas** que ceux en unité générale. Cela est due à la crise de la Covid-19. En effet, ce virus touche, pour des cas très graves, principalement les personnes plus agées et très peu les nourissons et enfants. Donc, les hospitalisations dans les services d'unités générales ont fortement augmenté par rapport à ceux de pédiatrie.
+
+
+```{r warning=FALSE, fig.align="center"}
+urgences2021$RMM <- as.factor(urgences2021$RMM)
+levels(urgences2021$RMM) <- c("Non","Oui")
+urgences2021 %>%
+  filter(!is.na(RMM)) %>% 
+  ggplot(aes(x = RMM, y = dt80))+
+  geom_boxplot(fill="cornflowerblue", color="black", notch=TRUE) + 
+  geom_point(position="jitter", color="blue", alpha=.5)+
+  geom_rug(side="l", color="black")+
+  labs(x = "Le service a-t-il mis en place un service de RMM ?", y = "Nombre de passages des + de 80 ans")+
+  ggtitle("Boxplot du nombre de passages des plus de 80 ans \nen fonction de la mise en place d'un service de RMM ou non")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Grâce à ce boxplot, nous remarquons que les établissements ayant mis en place un service de RMM ont **plus de passages de patients de plus de 80 ans** que ceux n'ayant pas mis en place un service de RMM.\n
+On remarque également que la médiane est plus haute pour les services ayant mis en place un service de RMM.
+
+## 1.3 Q20
+
+
+#### On compare l'effectif total des Hommes et des Femmes. 
+
+```{r}
+effectif_total_H = sum(q20$EFFSALPLH[q20$PERSO=="M9999"],q20$EFFSALPAH[q20$PERSO=="M9999"],q20$EFFLIBPLH[q20$PERSO=="M9999"], q20$EFFLIBPAH[q20$PERSO=="M9999"],na.rm = TRUE)
+cat("Effectif total des Hommes :",effectif_total_H)
+
+
+effectif_total_F = sum(q20$EFFSALPLF[q20$PERSO=="M9999"],q20$EFFSALPAF[q20$PERSO=="M9999"],q20$EFFLIBPLF[q20$PERSO=="M9999"], q20$EFFLIBPAF[q20$PERSO=="M9999"],na.rm = TRUE)
+cat("Effectif total des Femmes :",effectif_total_F)
+
+cat("L'effectif total des Hommes est-il plus important que celui des Femmes ?",effectif_total_H>effectif_total_F)
+```
+
+Lorsque l'on compare l'effectif total (temps plein et temps partiel) des hommes et des femmes (salariés et libéraux), on compte **plus d'Hommes que de Femmes**. 
+
+
+#### On compare l'effectif total des Hommes et des Femmes en temps partiel.
+
+```{r}
+effectif_total_H_temps_partiel = sum(q20$EFFSALPAH[q20$PERSO=="M9999"],q20$EFFLIBPAH[q20$PERSO=="M9999"],na.rm = TRUE)
+
+effectif_total_F_temps_partiel = sum(q20$EFFSALPAF[q20$PERSO=="M9999"],q20$EFFLIBPAF[q20$PERSO=="M9999"],na.rm = TRUE)
+
+cat("L'effectif total des Hommes en temps partiel est-t-il plus important que celui des Femmes ? ",effectif_total_H_temps_partiel>effectif_total_F_temps_partiel)
+```
+
+On comptabilise plus d'Hommes en temps partiel que de Femmes en temps partiel avec **38 815 Hommes** en temps partiel (salariés et libéraux) contre **29 218 Femmes** en temps partiel (salariées et libérales).
+
+
+#### On regarde maintenant si les femmes travaillent majoritairement en temps partiel ou en temps plein.
+
+```{r}
+effectif_total_F_temps_plein = sum(q20$EFFSALPLF[q20$PERSO=="M9999"],q20$EFFLIBPLF[q20$PERSO=="M9999"],na.rm = TRUE)
+cat("Les femmes travaillent-elles plus en temps plein qu'en temps partiel ?",effectif_total_F_temps_plein> effectif_total_F_temps_partiel)
+
+```
+On compte **40 845** femmes en temps plein contre **29 218** en temps partiel (salariées et libérales).
+
+
+<u>Réprésentation en camembert :</u>
+
+```{r}
+effectif_total = effectif_total_F+effectif_total_H
+
+df <- data.frame(
+  groupe = c("Hommes temps plein","Hommes temps partiel","Femmes temps plein", "Femmes temps partiel"),
+  value = c(effectif_total_H_temps_plein,effectif_total_H_temps_partiel,effectif_total_F_temps_plein, effectif_total_F_temps_partiel)
+  )
+
+knitr::kable(head(df))
+
+```
+
+
+```{r,fig.align="center"}
+pie <- ggplot(df, aes(x="", y=value, fill=groupe))+
+geom_bar(width = 1, stat = "identity")+
+  coord_polar("y", start=0)+
+  geom_text(aes(y = value/4 + c(0, cumsum(value)[-length(value)]),label = percent(value/effectif_total)), size=4)+
+  ggtitle("Répartition du personnel")+
+  theme_void()+ 
+  theme(plot.title = element_text(hjust=0.5))
+pie
+```
+
+
+Dans la base de données Q20, la proportion la plus importante dans le personnel correspond aux hommes en temps plein (généraux et libéraux), représentant **31.7%** du personnel. 
+
+
+#### Réalisation d'Une Analyse en Compoantes Principales (ACP)
+
+```{r warning=FALSE, fig.align="center"}
+data_acp_q20 <- q20[,5:24]
+#On supprime un grand nombre de lignes afin de faire fonctionner l'ACP même si cela perd un peu de sens
+data_acp_q20 <- na.omit(data_acp_q20)
+acp_q20 <- PCA(data_acp_q20,quali.sup=1,graph=FALSE)
+barplot(acp_q20$eig[,2])
+plot(acp_q20,choix="var")
+plot(acp_q20,choix="ind")
+```
+
+Nous avons mis en place une Analyse en Composantes Principales afin d'observer s'il y existait des corrélations entre les variables. Cependant, grâce au graphique de l'ACP en fonction des variables, nous remarquons qu'il n'existe pas de corrélation entre celles-ci. Cette analyse n'est pas forcément pertinente pour ce fichier de données.
+
